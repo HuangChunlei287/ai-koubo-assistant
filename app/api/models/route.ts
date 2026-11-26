@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/server/session";
 import { listModels } from "@/lib/providers/gemini";
 import { OPENAI_CHAT_MODELS, OPENAI_IMAGE_MODELS } from "@/lib/providers/openai";
 import { ANTHROPIC_CHAT_MODELS } from "@/lib/providers/anthropic";
+import { DEEPSEEK_CHAT_MODELS } from "@/lib/providers/deepseek";
 import { RUNWAY_VIDEO_MODELS } from "@/lib/providers/runway";
 import { MINIMAX_VIDEO_MODELS } from "@/lib/providers/minimax";
 import { LUMA_VIDEO_MODELS } from "@/lib/providers/luma";
@@ -58,6 +59,11 @@ export async function GET() {
   // Anthropic: static chat models
   if (session.apiKeys.anthropic) {
     chat.push(...ANTHROPIC_CHAT_MODELS);
+  }
+
+  // DeepSeek: static chat models (OpenAI-compatible API)
+  if (session.apiKeys.deepseek) {
+    chat.push(...DEEPSEEK_CHAT_MODELS);
   }
 
   // Runway: static video models

@@ -1,5 +1,7 @@
 # Script2Video
 
+> 本文件保留原项目 Script2Video 的中文说明。当前仓库已改造为「AI 口播创作助手」，最新功能、运行方式和改造说明见 [README.md](README.md)。
+
 [English](README.md) · **中文**
 
 将文字脚本转化为分镜视频的 AI 工具。输入剧本，AI 自动拆分分镜并生成 prompt，逐镜生成视频，最终拼接为完整影片。
@@ -30,6 +32,7 @@
 | **Google Gemini** | gemini-2.5-pro、gemini-2.0-flash 等（动态拉取） |
 | **OpenAI** | gpt-4.1、gpt-4o、gpt-4o-mini、o4-mini、o3 |
 | **Anthropic** | claude-opus-4-5、claude-sonnet-4-5、claude-haiku-3-5 |
+| **DeepSeek** | deepseek-chat（OpenAI 兼容接口，国内直连） |
 
 ### 视频模型
 
@@ -84,6 +87,7 @@ pnpm dev
 | Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Anthropic | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
 | Runway | [app.runwayml.com/settings](https://app.runwayml.com/settings) |
 | MiniMax | [platform.minimax.io](https://platform.minimax.io) |
 | Luma | [lumalabs.ai/dream-machine/api](https://lumalabs.ai/dream-machine/api) |
@@ -98,7 +102,7 @@ pnpm dev
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| **对话模型** | 用于拆分分镜的模型（Gemini / OpenAI / Anthropic） | 自动选最新可用 |
+| **对话模型** | 用于拆分分镜的模型（Gemini / OpenAI / Anthropic / DeepSeek） | 自动选最新可用 |
 | **视频模型** | 用于生成视频的模型（Veo / Runway / MiniMax / Luma） | 自动选最新可用 |
 | **图像模型** | 用于合成首帧的图像模型（Gemini / OpenAI / fal.ai / Stability AI） | 自动选最新可用 |
 | **画幅** | 横屏 16:9 / 竖屏 9:16 | 16:9 |
@@ -116,7 +120,7 @@ pnpm dev
 ```
 app/
   api/
-    chat/route.ts           # 调用 Gemini / OpenAI / Anthropic 拆分脚本
+    chat/route.ts           # 调用 Gemini / OpenAI / Anthropic / DeepSeek 拆分脚本
     image/generate/route.ts # 帧合成图像（Gemini / OpenAI / fal.ai / Stability AI）
     models/route.ts         # 聚合所有已配置提供商的可用模型
     settings/route.ts       # 多提供商 API Key 的保存 / 读取 / 删除
@@ -145,6 +149,7 @@ lib/
     gemini.ts               # Gemini API（对话 / 图像 / Veo）
     openai.ts               # OpenAI Chat + Image API
     anthropic.ts            # Anthropic Messages API
+    deepseek.ts             # DeepSeek 对话 API（OpenAI 兼容）
     runway.ts               # Runway Gen API
     minimax.ts              # MiniMax Video API
     luma.ts                 # Luma Dream Machine API

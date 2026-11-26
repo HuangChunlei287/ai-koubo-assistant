@@ -1,103 +1,72 @@
 import type { Storyboard } from "@/lib/types";
 
 const LANGUAGE_NAMES: Record<string, string> = {
-  "en": "English",
+  en: "English",
   "en-US": "English",
   "en-GB": "English",
-  "zh": "Mandarin Chinese",
-  "zh-CN": "Mandarin Chinese (Simplified)",
-  "zh-TW": "Mandarin Chinese (Traditional)",
-  "ja": "Japanese",
-  "ko": "Korean",
-  "fr": "French",
-  "de": "German",
-  "es": "Spanish",
+  zh: "简体中文",
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
+  ja: "日本語",
+  ko: "한국어",
+  fr: "Français",
+  de: "Deutsch",
+  es: "Español",
 };
 
 export function languageName(tag?: string): string {
-  if (!tag) return "the script's source language";
+  if (!tag) return "脚本原文语言";
   return LANGUAGE_NAMES[tag] ?? tag;
 }
 
-export const STORYBOARD_SYSTEM_PROMPT = `You are a senior film director and storyboard planner. Given a script, produce a storyboard following these rules:
+export const STORYBOARD_SYSTEM_PROMPT = `你是一名资深短视频口播导演和拍摄指导，负责把一段口播文案拆解成真人可以照着拍的分镜脚本。
 
-## STYLE
-Use the user-specified visual style; if none given, infer one that fits the script's tone.
+## 输出语言（critical）
+- 除 dialogue 和 subtitle 外，所有字段必须使用简体中文：summary、camera、composition、ambiance、sfx、continuityHint、veoPrompt、keywords、detectedStyle。
+- dialogue 和 subtitle 必须逐字保留原文，不得改写、翻译、增删或润色。
+- 如果用户指定了台词语言，dialogue/subtitle 使用该语言；其余描述字段仍用简体中文。
 
-## DURATION
-Derive each shot's durationSec precisely:
-- Raw speaking time: count chars/words in dialogue only (not stage directions). ~4 Chinese chars/sec · ~2.5 English words/sec · ~5 JP/KR chars/sec.
-- Add buffer: +0.5s for dialogue shots (idle hold after last word); +1–1.5s for non-dialogue B-roll.
-- Snap to the nearest allowed value that comfortably fits the content. If the computed time falls between two allowed values, choose the LARGER one. Only snap down when the smaller value has ≥0.5s margin remaining. Never exceed user-specified max.
-- Vary durations — identical durations across all shots are forbidden unless content genuinely matches.
+## 分镜规则
+- index 从 1 开始连续编号（1, 2, 3…），绝不能出现 0。
+- 每个镜头 2–8 秒；durationSec 只能从 allowedDurations 里选，且不超过单镜头最大时长。
+- 按用户给出的“目标视频总时长”规划镜头数量：所有 durationSec 之和应接近目标（±2 秒；60 秒允许 ±4 秒），不要只按单镜头最大值分配。
+- 不要所有镜头同一时长，按台词长度自然分配。
+- 按语义断句：一个镜头讲 1–2 句，不要从句子中间硬切。
+- 镜头要交替：出镜口播、产品/菜品特写、使用演示、环境空镜、字幕卡。不要连续 3 个以上纯出镜镜头。
+- 第一个镜头要有钩子：近景或特写 + 直接抛问题/利益点。最后一个镜头要有行动引导（到店、点左下角、评论区留言等）。
+- 9:16 竖屏：主体居中偏上，下方留出字幕和贴纸空间；16:9 横屏：注意左右构图。
 
-## SHOT STRUCTURE (critical)
-### Alternation rule
-- PRESENTER / NEWS / EXPLAINER: strictly alternate presenter shots and B-roll shots. No more than ONE consecutive presenter shot without a B-roll between them. Merging two short presenter lines into one shot is preferred over three consecutive presenter shots.
-- NARRATIVE: intercut with establishing shots, reaction shots, environmental details, and symbolic props that enrich the story while respecting the script's logic.
+## 每个字段怎么写
+- summary：一句话说明这个镜头拍什么（中文）。
+- camera：景别 + 机位/运镜，例如“中景，固定机位，轻微推近”“特写，手持跟拍”。
+- composition：主体位置、前景、背景，例如“人物居中，背景是沸腾的火锅，前景有毛肚”。
+- ambiance：场景、光线、氛围，例如“暖色灯光，店内烟火气”。
+- dialogue：必须是数组，格式为 [{"speaker":"主持人","line":"台词原文"}]，每个镜头至少一条；绝不能写成一个字符串。台词逐字保留。
+- subtitle：与台词逐字一致；如果字幕关闭则留空字符串。
+- keywords：从本镜头台词中挑 1–3 个需要字幕强调的原词（价格、数字、卖点、行动词），不要造词。
+- sfx：环境音/音效建议（中文），没有就返回空数组。
+- continuityHint：与前后镜头的衔接提示（服装、道具、位置、光线保持一致）。
+- veoPrompt：给拍摄者的中文执行提示，写清动作、道具、机位、字幕/贴纸建议；不要写英文，不要提 Veo。
 
-### Camera variety (presenter shots)
-Each return to the same presenter location MUST use a different focal length AND a different camera move from all previous appearances at that location. Forbidden: repeating the same framing (e.g., two consecutive medium close-ups with slow push-in). Rotate through: wide / medium / medium close-up / close-up, and through: static / push-in / pull-back / track-left / track-right / tilt.
-
-### Subject visual identity
-If the script introduces a named product, service, AI character, or brand, dedicate at least one B-roll shot to establishing its visual identity (e.g., logo, UI interface, avatar, or product form factor). Do not let the entire video pass without showing what the subject looks like.
-
-### Environment grounding for abstract B-roll
-Abstract concepts (data flows, AI cores, network graphs, algorithms) MUST be grounded in the established set environment — shown on a holographic display, a studio monitor, a presenter's screen, or similar in-scene surface. Avoid floating abstract elements in a featureless void unless the style explicitly demands it.
-
-## VEO PROMPT
-Write a complete English veoPrompt per shot covering subject, action, style, camera motion, composition, focus, and ambiance. Every shot must be visually specific — environment, lighting, textures, colors, micro-actions, emotional tone. In-scene contextual visuals must feel organic (on screens, holograms, whiteboards), not superimposed. Generic shots are unacceptable. If hands appear: append "no middle finger, no offensive hand gestures". For abstract B-roll, describe the display surface clearly (e.g., "shown on a large holographic monitor in the studio"). If a URL, brand name, or text must appear on screen, describe it as physically present on an in-scene surface (LED panel, screen, signage) — never describe it as a floating overlay or graphic, as these tend to be rendered as burned-in subtitles.
-
-## AUDIO (critical)
-- VOICE ONLY: only the speaker's voice is audible during speech — no background music, no ambient hum under dialogue. After the last spoken word the audio track is completely silent; no trailing ambiance or SFX.
-- IDLE BEHAVIOR: after finishing dialogue the on-screen character holds a natural calm expression and idle posture — no unnatural mouth movement, strange gestures, or extraneous sounds.
-- CONTINUITY: ambiance and SFX across all shots must be subtle and consistent (same room-tone family, same intensity). No sudden loud impacts or music stings unless the script explicitly demands.
-
-## VOICE IDENTITY (critical for consistency)
-At the start of planning, derive a single voice descriptor from the script's speaker/presenter (e.g., gender, approximate age, accent, tone, pace). Then include this EXACT descriptor phrase in the veoPrompt of EVERY shot — both presenter shots and B-roll voice-overs — so Veo generates a consistent voice across all clips. Example: "The speaking voice is a confident male voice, early 30s, clear American English, warm professional tone, moderate pace."
-
-## DIALOGUE CONTRACT (critical)
-- dialogue[]: EXACT verbatim lines in the user-requested language — no translation, no paraphrase.
-- subtitle: verbatim dialogue lines joined by single space, same language. Empty if no dialogue.
-- veoPrompt speech tag depends on whether a visible speaker is on screen:
-  - ON-SCREEN speaker (presenter/character visible and speaking): end veoPrompt with 'The {speaker} says in {LanguageName}: "<line>"' per line, joined by ' Then '. This instructs Veo to generate lip-sync. Quoted text must be byte-identical to dialogue[i].line.
-  - B-ROLL / no visible speaker (logo shots, UI shots, product shots, abstract visuals): if no person is described anywhere in the veoPrompt body, MUST append "no additional people, no background persons, no unscripted human figures in this shot". If the reference presenter IS intentionally present in the B-roll (e.g., pointing at a screen), describe them explicitly and use the ON-SCREEN speaker tag instead. Then end with 'Voice-over in {LanguageName}, no visible speaker: "<line>"'. Quoted text must be byte-identical to dialogue[i].line.
-  - GENERAL RULE for ALL shots: every person who appears on screen must be explicitly described in the veoPrompt. Append "no unscripted background persons or crowd members beyond those described above" to every shot's veoPrompt to prevent Veo from hallucinating additional figures.
-
-## SPEECH TIMING (critical)
-Speaker starts within 0.3s and finishes before the last 0.5s. Append to veoPrompt: "the speaker begins talking immediately, no opening pause; the line ends just before the clip ends, no trailing silence".
-
-## SUBTITLES & REFERENCES
-- Subtitles: if enabled, fill subtitle in the script's original language; otherwise leave empty.
-- Reference images: if provided (1-based), set referenceImageIndex on relevant shots (0 or omit = none).
-
-Output STRICT JSON matching the provided schema. No markdown, no commentary.`;
-
-export const STORYBOARD_REVIEW_SYSTEM_PROMPT = `You are a senior film editor performing a final review pass on a storyboard. Audit and FIX:
-
-1. Duration: raw speaking time (dialogue chars/words only) ÷ rate (~4 CN/sec, ~2.5 EN words/sec, ~5 JP/KR/sec) + 0.5s buffer for dialogue shots or 1–1.5s for non-dialogue. Snap to the nearest allowed value that fits; if between two values choose the LARGER; only snap down when the smaller value has ≥0.5s margin. Never exceed max. Reject uniform durations when content varies.
-2. Alternation: no more than one consecutive presenter/talking-head shot without a B-roll between them. Merge adjacent short presenter lines rather than allow back-to-back presenter shots.
-3. Camera variety: each presenter-shot return to the same location must use a different focal length and camera move from all prior appearances. Fix repeated framing (e.g., two medium close-ups with push-in in a row).
-4. Subject visual identity: verify at least one B-roll shot establishes the visual identity of any named product, service, AI, or brand mentioned in the script. Add one if missing.
-5. Environment grounding: abstract B-roll (data flows, AI cores, network graphs) must be shown on an in-scene surface (holographic display, studio monitor, screen). Fix any elements floating in a featureless void unless style demands it.
-6. Audio: (a) voice only under dialogue — no music or ambient hum; (b) complete silence after last spoken word — no trailing ambiance; (c) presenter holds natural calm idle after dialogue; (d) ambiance/SFX subtle and consistent across all shots.
-7. Voice identity: every shot's veoPrompt must contain the same voice descriptor phrase (gender, age, accent, tone, pace). If missing or inconsistent across shots, unify them all to match the presenter described in the script or reference image.
-8. Dialogue↔Veo: every dialogue[i].line must appear VERBATIM (byte-identical) inside veoPrompt. For shots with a visible on-screen speaker use 'The {speaker} says in {LanguageName}: "<line>"'. For B-roll shots with no person described: verify "no additional people, no background persons" clause is present and the tag is 'Voice-over in {LanguageName}, no visible speaker: "<line>"'. Verify every shot (presenter or B-roll) contains "no unscripted background persons" clause. Fix any missing constraints.
-9. Subtitle/language: subtitle = verbatim dialogue joined by single space in the requested language.
-10. Speech timing: every dialogue shot must direct the speaker to begin within 0.3s and finish before the last 0.5s. Add if missing.
-11. Visual richness: every veoPrompt must be specific and sensory; add organic in-scene props when the topic supports it.
-12. Coherence: continuityHint must match adjacent shots. Redistribute shots if pacing is off.
-13. Forbidden: remove any obscene hand gestures.
-
-Output the COMPLETE revised storyboard in STRICT JSON. No markdown, no commentary. Preserve detectedStyle and language unless clearly wrong.`;
+## OUTPUT CONTRACT (critical)
+- 每个 shot 必须包含全部字段，即使为空也要保留：index、durationSec、summary、veoPrompt、dialogue、sfx、camera、composition、ambiance、subtitle、keywords。缺字段视为错误。
+- dialogue 必须是数组：[{"speaker":"主持人","line":"台词原文"}]，不能是字符串。
+- 顶层必须包含：detectedStyle、language、totalDurationSec、shots。
+- 只输出严格 JSON，不要 markdown，不要解释。`;
 
 export interface BuildPromptArgs {
   script: string;
+  /** Max duration of a single shot. */
   durationSec: number;
+  /** Target total duration of the whole video. */
+  targetDurationSec?: number;
   allowedDurations: number[];
   aspectRatio: "16:9" | "9:16";
   withSubtitle: boolean;
   language?: string;
+  platform?: string;
+  audience?: string;
+  style?: string;
   history?: { role: "user" | "assistant"; text: string }[];
   referenceImageNames?: string[];
 }
@@ -105,28 +74,33 @@ export interface BuildPromptArgs {
 export function buildStoryboardUserPrompt(args: BuildPromptArgs): string {
   const refLine =
     args.referenceImageNames && args.referenceImageNames.length > 0
-      ? `Reference images attached (1-based): ${args.referenceImageNames
-        .map((n, i) => `${i + 1}. ${n}`)
-        .join(" | ")}. Set referenceImageIndex on relevant shots.`
+      ? `参考图（1-based）：${args.referenceImageNames
+          .map((n, i) => `${i + 1}. ${n}`)
+          .join(" | ")}。若某个镜头需要参考图，设置 referenceImageIndex；不需要则省略。`
       : ``;
   return [
-    `Allowed durationSec values: [${args.allowedDurations.join(", ")}]. Max is ${args.durationSec}s. Assign each shot the value from this list that best matches natural content length.`,
-    `IMPORTANT: do NOT make every shot the same duration — vary them to fit the scene length.`,
-    `Aspect ratio: ${args.aspectRatio}.`,
-    `Subtitles: ${args.withSubtitle ? "ENABLED — fill 'subtitle' per shot." : "DISABLED — leave 'subtitle' empty."}`,
-    args.language
-      ? `IMPORTANT: ALL subtitle and dialogue text MUST be written in language "${args.language}" (${languageName(args.language)}) — verbatim, no translation. The veoPrompt prose itself stays English, but every quoted spoken line inside it must remain in ${languageName(args.language)}.`
+    `允许的单镜头时长：[${args.allowedDurations.join(", ")}]。单镜头最长 ${args.durationSec} 秒。`,
+    args.targetDurationSec
+      ? `目标视频总时长：约 ${args.targetDurationSec} 秒。建议镜头数量约 ${Math.max(3, Math.round(args.targetDurationSec / 6))} 个；请让所有镜头 durationSec 之和接近该值（±2 秒；60 秒允许 ±4 秒）。`
       : ``,
+    `画幅：${args.aspectRatio}。`,
+    args.platform
+      ? `发布平台：${args.platform}；目标受众：${args.audience || "普通短视频用户"}；口播风格：${args.style || "亲切种草"}。`
+      : ``,
+    `字幕：${args.withSubtitle ? "开启 — 每个镜头都要填写 subtitle。" : "关闭 — subtitle 留空字符串。"}`,
+    args.language
+      ? `台词/字幕语言：${args.language}（${languageName(args.language)}）。dialogue 和 subtitle 必须逐字保留该语言原文，不得翻译；其余描述字段一律用简体中文。`
+      : `台词/字幕语言：保持脚本文案原文，不得翻译；其余描述字段一律用简体中文。`,
     refLine,
     ``,
-    `=== SCRIPT ===`,
+    `=== 口播文案 ===`,
     args.script,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-// Gemini responseSchema (subset of OpenAPI). 注意 Gemini 不支持完整 JSON Schema，这里用兼容写法
+/** Gemini responseSchema (subset of OpenAPI). Gemini does not support full JSON Schema. */
 export const STORYBOARD_RESPONSE_SCHEMA = {
   type: "object",
   required: ["detectedStyle", "language", "totalDurationSec", "shots"],
@@ -148,6 +122,7 @@ export const STORYBOARD_RESPONSE_SCHEMA = {
           "camera",
           "composition",
           "ambiance",
+          "keywords",
         ],
         properties: {
           index: { type: "integer" },
@@ -170,6 +145,7 @@ export const STORYBOARD_RESPONSE_SCHEMA = {
           composition: { type: "string" },
           ambiance: { type: "string" },
           subtitle: { type: "string" },
+          keywords: { type: "array", items: { type: "string" } },
           continuityHint: { type: "string" },
           referenceImageIndex: { type: "integer" },
         },
@@ -181,25 +157,4 @@ export const STORYBOARD_RESPONSE_SCHEMA = {
 export function parseStoryboard(raw: string): Storyboard {
   const cleaned = raw.trim().replace(/^```json\s*|\s*```$/g, "");
   return JSON.parse(cleaned) as Storyboard;
-}
-
-export function buildStoryboardReviewPrompt(args: {
-  storyboard: Storyboard;
-  allowedDurations: number[];
-  maxDurationSec: number;
-  language?: string;
-  withSubtitle: boolean;
-}): string {
-  return [
-    `Allowed durationSec values: [${args.allowedDurations.join(", ")}]. Max per shot: ${args.maxDurationSec}s.`,
-    args.language ? `Required subtitle/dialogue language: "${args.language}".` : ``,
-    `Subtitles ${args.withSubtitle ? "ENABLED" : "DISABLED"}.`,
-    ``,
-    `=== CURRENT STORYBOARD (JSON) ===`,
-    JSON.stringify(args.storyboard, null, 2),
-    ``,
-    `Audit the entire storyboard against the rules in your system instruction. Output the corrected, complete storyboard JSON.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
 }

@@ -1,4 +1,4 @@
-export type Provider = "gemini" | "openai" | "anthropic" | "runway" | "minimax" | "luma" | "fal" | "stability";
+export type Provider = "gemini" | "openai" | "anthropic" | "deepseek" | "runway" | "minimax" | "luma" | "fal" | "stability";
 
 export interface ProviderConfig {
   provider: Provider;
@@ -22,6 +22,7 @@ export function inferProvider(model: string): Provider {
   if (model.startsWith("models/") || model.startsWith("gemini-") || model.startsWith("imagen")) return "gemini";
   if (model.startsWith("gpt-") || /^o[0-9]/.test(model)) return "openai";
   if (model.startsWith("claude-")) return "anthropic";
+  if (model.startsWith("deepseek-")) return "deepseek";
   if (/^gen[0-9]/.test(model) || model === "act_two") return "runway";
   if (model.startsWith("MiniMax-")) return "minimax";
   if (model.startsWith("ray-")) return "luma";
@@ -64,6 +65,8 @@ export interface Shot {
   composition: string;
   ambiance: string;
   subtitle?: string;
+  /** 1–3 words from the dialogue that should be emphasized in the subtitle. */
+  keywords?: string[];
   continuityHint?: string;
   /** 1-based index into the user's uploaded reference images, or 0 if none. */
   referenceImageIndex?: number;
@@ -79,6 +82,20 @@ export interface ReferenceImage {
   bytesBase64Encoded: string;
   /** Compressed size in bytes after client-side downscale. */
   size: number;
+}
+
+export interface CreativeBrief {
+  theme: string;
+  platform: string;
+  audience: string;
+  durationSec: number;
+  style: string;
+}
+
+export interface PublishCopy {
+  titles: string[];
+  coverTexts: string[];
+  description: string;
 }
 
 export interface Storyboard {

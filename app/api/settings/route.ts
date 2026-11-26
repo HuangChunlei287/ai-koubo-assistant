@@ -3,6 +3,7 @@ import { clearSession, readSession, writeSession } from "@/lib/server/session";
 import { listModels } from "@/lib/providers/gemini";
 import { validateApiKey as validateOpenAI } from "@/lib/providers/openai";
 import { validateApiKey as validateAnthropic } from "@/lib/providers/anthropic";
+import { validateApiKey as validateDeepSeek } from "@/lib/providers/deepseek";
 import { validateApiKey as validateRunway } from "@/lib/providers/runway";
 import { validateApiKey as validateMiniMax } from "@/lib/providers/minimax";
 import { validateApiKey as validateLuma } from "@/lib/providers/luma";
@@ -20,6 +21,9 @@ async function validateProvider(provider: Provider, apiKey: string): Promise<voi
       break;
     case "anthropic":
       await validateAnthropic(apiKey);
+      break;
+    case "deepseek":
+      await validateDeepSeek(apiKey);
       break;
     case "runway":
       await validateRunway(apiKey);
@@ -58,7 +62,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = (await req.json()) as { provider?: string; apiKey?: string };
-  const validProviders: Provider[] = ["gemini", "openai", "anthropic", "runway", "minimax", "luma", "fal", "stability"];
+  const validProviders: Provider[] = ["gemini", "openai", "anthropic", "deepseek", "runway", "minimax", "luma", "fal", "stability"];
   if (!body.provider || !validProviders.includes(body.provider as Provider) || !body.apiKey) {
     return NextResponse.json({ error: "invalid input" }, { status: 400 });
   }

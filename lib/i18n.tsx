@@ -89,6 +89,7 @@ export type Messages = {
   sbAmbiance: string;
   sbDialogue: string;
   sbSubtitle: string;
+  sbKeywords: string;
   sbContinuity: string;
   sbVeoPrompt: string;
   sbGenerate: string;
@@ -155,9 +156,9 @@ const en: Messages = {
   navThemeLoading: "🎨",
   navLangToggle: "中文",
 
-  welcomeTitle: "Welcome to Script2Video",
+  welcomeTitle: "Welcome to the AI Oral Script Assistant",
   welcomeDesc:
-    "First, configure your providers in Settings. Supported chat models: Gemini, GPT-4o/o3, Claude. Video: Veo, Runway, MiniMax Hailuo, Luma Ray. At minimum, add a Gemini key to get started.",
+    "First, add a model API key in Settings (DeepSeek / Gemini / OpenAI / Claude). Then enter a topic on the home page to generate an oral script and split it into a shootable storyboard.",
   welcomeGoSettings: "Go to Settings",
 
   settingsTitle: "Settings",
@@ -186,7 +187,7 @@ const en: Messages = {
     "Shot continuity: optionally enable Nano Banana to generate first/last reference frames.",
   settingsAboutLine3: "Subtitles: soft subtitles (WebVTT), not burned into video.",
 
-  paramsTitle: "Parameters",
+  paramsTitle: "② Generation Settings",
   paramsRefreshModels: "Refresh Models",
   paramsChatModel: "Chat Model",
   paramsChatModelPlaceholder: "Select chat model",
@@ -206,16 +207,16 @@ const en: Messages = {
   paramsAutoContinue: "Auto-continue when done",
 
   chatEmpty:
-    "Enter your script and AI will split it into shots based on the selected model duration, generating English prompts for Veo.",
+    "Fill in a topic above to let the AI write a script, or paste your own oral script. Then generate a shootable storyboard, subtitle keywords, and publish copy.",
   chatUpload: "Upload Ref",
-  chatPlaceholder: "Paste or enter a script, Ctrl+Enter to send",
+  chatPlaceholder: "Paste or enter your oral script, Ctrl+Enter to send",
   chatSubmit: "Submit",
   chatSplitting: "Model is splitting shots...",
   chatInterrupted: "Generation interrupted",
   chatRetry: "Re-split shots",
   chatCopied: "Copied",
   chatClickCopy: "Click to copy",
-  chatGenSuccess: (n) => `✅ Generation successful — ${n} shot${n === 1 ? "" : "s"}\n\nReview the storyboard below, then click **Confirm & Generate Video** to start rendering.`,
+  chatGenSuccess: (n) => `✅ Generation successful — ${n} shot${n === 1 ? "" : "s"}\n\nReview the storyboard below. Edit the script and resubmit if anything needs adjustment.`,
 
   sbStyle: "Style:",
   sbLanguage: "Language:",
@@ -225,10 +226,11 @@ const en: Messages = {
   sbCamera: "Camera:",
   sbComposition: "Composition:",
   sbAmbiance: "Ambiance:",
-  sbDialogue: "Dialogue",
+  sbDialogue: "Script",
   sbSubtitle: "Subtitle:",
+  sbKeywords: "Keywords:",
   sbContinuity: "Continuity:",
-  sbVeoPrompt: "Veo Prompt",
+  sbVeoPrompt: "Shooting notes",
   sbGenerate: "Confirm & Generate Video",
 
   jobsTrigger: "View Generation Progress",
@@ -289,9 +291,9 @@ const zh: Messages = {
   navThemeLoading: "🎨",
   navLangToggle: "English",
 
-  welcomeTitle: "欢迎使用 Script2Video",
+  welcomeTitle: "欢迎使用 AI 口播创作助手",
   welcomeDesc:
-    "首次使用需在设置页配置各 Provider 的 API Key。支持对话：Gemini / GPT-4o / Claude；视频：Veo / Runway / MiniMax Hailuo / Luma Ray。最少配置一个 Gemini Key 即可开始。",
+    "首次使用请先在设置页配置模型 API Key（支持 DeepSeek / Gemini / OpenAI / Claude）。配置后回到首页，填写主题即可生成口播脚本，再拆成可执行的拍摄分镜。",
   welcomeGoSettings: "去设置",
 
   settingsTitle: "设置",
@@ -319,7 +321,7 @@ const zh: Messages = {
   settingsAboutLine2: "分镜衔接：可选启用 Nano Banana 生成首尾参考帧。",
   settingsAboutLine3: "字幕：软字幕（WebVTT），不烧录到视频中。",
 
-  paramsTitle: "参数",
+  paramsTitle: "② 生成参数",
   paramsRefreshModels: "刷新模型",
   paramsChatModel: "对话模型",
   paramsChatModelPlaceholder: "选择对话模型",
@@ -338,16 +340,16 @@ const zh: Messages = {
   paramsChainFrames: "分镜衔接（串行抽尾帧）",
   paramsAutoContinue: "完成后自动继续",
 
-  chatEmpty: "输入你的脚本，AI 会按所选视频模型时长拆分分镜，并生成可直接喂给 Veo 的英文 prompt。",
+  chatEmpty: "在上方填写主题，让 AI 先写一版口播脚本；也可以直接粘贴自己的文案。提交后会拆成可执行的拍摄分镜，并给出字幕重点词和发布文案。",
   chatUpload: "上传参考",
-  chatPlaceholder: "粘贴或输入脚本，Ctrl+Enter 发送",
+  chatPlaceholder: "粘贴或输入口播文案，Ctrl+Enter 发送",
   chatSubmit: "提交",
   chatSplitting: "模型正在拆分镜...",
   chatInterrupted: "生成被中断",
   chatRetry: "重新生成分镜",
   chatCopied: "已复制",
   chatClickCopy: "点击复制",
-  chatGenSuccess: (n) => `✅ 生成成功，共 ${n} 个镜头\n\n请检查下方分镜表，确认无误后点击**确认并生成视频**开始渲染。`,
+  chatGenSuccess: (n) => `✅ 生成成功，共 ${n} 个镜头\n\n请检查下方分镜表，可直接修改文案后重新提交。`,
 
   sbStyle: "风格：",
   sbLanguage: "语言：",
@@ -357,10 +359,11 @@ const zh: Messages = {
   sbCamera: "镜头：",
   sbComposition: "构图：",
   sbAmbiance: "氛围：",
-  sbDialogue: "对话",
+  sbDialogue: "台词",
   sbSubtitle: "字幕：",
+  sbKeywords: "重点词：",
   sbContinuity: "衔接：",
-  sbVeoPrompt: "Veo Prompt",
+  sbVeoPrompt: "拍摄提示",
   sbGenerate: "确认并生成视频",
 
   jobsTrigger: "查看生成进度",
@@ -438,6 +441,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const detected = detectLocale();
+    // Locale is read from localStorage after hydration to avoid an SSR mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocaleState(detected);
   }, []);
 

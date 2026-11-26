@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Chip,
+  Input,
   Label,
   ListBox,
   Select,
@@ -14,27 +15,28 @@ import {
 } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
-import { compressImage } from "@/lib/client/media";
-import { useJobsStore } from "@/lib/stores/jobs";
 import { useSessionsStore } from "@/lib/stores/sessions";
-import { JobsPanel } from "@/components/JobsPanel";
 import { SessionsPanel } from "@/components/SessionsPanel";
-import type { GeminiModel, ReferenceImage, Storyboard } from "@/lib/types";
+import type { CreativeBrief, GeminiModel, PublishCopy, Storyboard } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
-import { Check, Clapperboard, Copy, ImagePlus, RefreshCw, RotateCcw, Send } from "lucide-react";
+import { Check, Copy, RefreshCw, RotateCcw, Send } from "lucide-react";
 
 type Models = { chat: GeminiModel[]; video: GeminiModel[]; image: GeminiModel[] };
-
-const MAX_REFERENCE_IMAGES = 3;
 
 interface UiMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   storyboard?: Storyboard;
+  /** The user script this storyboard was generated from (for publish copy). */
+  sourceScript?: string;
+  /** The creative brief used for this storyboard (target duration / platform). */
+  sourceBrief?: CreativeBrief;
 }
 
-const SETTINGS_KEY = "s2v_ui_settings_v1";
+type Brief = CreativeBrief;
+
+const SETTINGS_KEY = "s2v_ui_settings_v2";
 interface UiSettings {
   chatModel?: string;
   videoModel?: string;
@@ -50,14 +52,14 @@ interface UiSettings {
   language: string;
 }
 const DEFAULT_SETTINGS: UiSettings = {
-  aspectRatio: "16:9",
+  aspectRatio: "9:16",
   durationSec: 8,
   withSubtitle: true,
   withReferenceFrames: true,
   chainFrames: true,
   concurrency: 1,
   autoContinue: true,
-  language: "en-US",
+  language: "zh-CN",
 };
 
 function loadUiSettings(): UiSettings {
@@ -93,9 +95,15 @@ export function ChatWorkspace() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [refImages, setRefImages] = useState<ReferenceImage[]>([]);
-  const startJobs = useJobsStore((s) => s.start);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [brief, setBrief] = useState<Brief>({
+    theme: "",
+    platform: "抖音",
+    audience: "",
+    durationSec: 30,
+    style: "亲切种草",
+  });
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const themeRef = useRef<HTMLTextAreaElement | null>(null);
   const { t } = useI18n();
 
   const sessionsLoaded = useSessionsStore((s) => s.loaded);
@@ -137,16 +145,16 @@ export function ChatWorkspace() {
           model: settings.chatModel,
           script,
           durationSec: settings.durationSec,
+          targetDurationSec: brief.durationSec,
           allowedDurations: durations,
           aspectRatio: settings.aspectRatio,
           withSubtitle: settings.withSubtitle,
           language: settings.language,
+          platform: brief.platform,
+          audience: brief.audience,
+          style: brief.style,
           history: historyMessages.map((h) => ({ role: h.role, content: h.content })),
-          referenceImages: refImages.map((r) => ({
-            name: r.name,
-            mimeType: r.mimeType,
-            bytesBase64Encoded: r.bytesBase64Encoded,
-          })),
+          referenceImages: [],
         }),
       });
       const d = await res.json();
@@ -165,6 +173,8 @@ export function ChatWorkspace() {
           role: "assistant",
           content: t.chatGenSuccess(d.storyboard.shots.length),
           storyboard: d.storyboard as Storyboard,
+          sourceScript: script,
+          sourceBrief: brief,
         },
       ]);
     } catch (e) {
@@ -172,7 +182,16 @@ export function ChatWorkspace() {
     } finally {
       setSubmitting(false);
     }
-  }, [settings.chatModel, settings.videoModel, settings.durationSec, settings.aspectRatio, settings.withSubtitle, settings.language, refImages, t]);
+  }, [
+    settings.chatModel,
+    settings.videoModel,
+    settings.durationSec,
+    settings.aspectRatio,
+    settings.withSubtitle,
+    settings.language,
+    brief,
+    t,
+  ]);
 
   // Hydrate UI when the active session id flips (e.g. user picks from sidebar).
   useEffect(() => {
@@ -185,11 +204,11 @@ export function ChatWorkspace() {
       role: m.role,
       content: m.content,
       storyboard: m.storyboard,
+      sourceScript: m.sourceScript,
+      sourceBrief: m.sourceBrief,
     }));
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages(hydratedMessages);
-    setRefImages(rec.refImages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, sessionsList]);
 
   // Persist edits back to IDB. Debounced via a microtask-batched effect.
@@ -203,19 +222,20 @@ export function ChatWorkspace() {
           role: m.role,
           content: m.content,
           storyboard: m.storyboard,
+          sourceScript: m.sourceScript,
+          sourceBrief: m.sourceBrief,
         })),
-        refImages,
+        refImages: [],
       });
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [messages, refImages, activeId, saveActive, t.newSessionTitle]);
+  }, [messages, activeId, saveActive, t.newSessionTitle]);
 
   // Restore persisted settings after hydration (client-only).
   useEffect(() => {
     const loaded = loadUiSettings();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSettings(loaded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -252,12 +272,63 @@ export function ChatWorkspace() {
     } finally {
       setLoadingModels(false);
     }
-  }, []);
+  }, [t.toastNoModels]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshModels();
   }, [refreshModels]);
+
+  const generateScript = useCallback(async () => {
+    if (generatingScript) return;
+    if (!brief.theme.trim()) {
+      toast.warning("请先填写主题", {
+        description: "例如：冬天火锅店双人餐 199 元",
+      });
+      themeRef.current?.focus();
+      return;
+    }
+    if (!settings.chatModel) {
+      toast.warning(t.toastNoChatModel);
+      return;
+    }
+    setGeneratingScript(true);
+    try {
+      const res = await fetch("/api/script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: settings.chatModel,
+          theme: brief.theme,
+          platform: brief.platform,
+          audience: brief.audience,
+          durationSec: brief.durationSec,
+          style: brief.style,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        toast.danger("脚本生成失败", { description: d.error });
+        return;
+      }
+      setInput(d.script.fullScript);
+      toast.success("口播脚本已生成", {
+        description: "可在下方输入框修改，确认后点提交生成分镜。",
+      });
+    } catch (e) {
+      toast.danger("网络错误", { description: String(e) });
+    } finally {
+      setGeneratingScript(false);
+    }
+  }, [brief, generatingScript, settings.chatModel, t.toastNoChatModel]);
+
+  const updatePlatform = useCallback((platform: string) => {
+    setBrief((b) => ({ ...b, platform }));
+    setSettings((s) => ({
+      ...s,
+      aspectRatio: platform === "视频号" ? "16:9" : "9:16",
+    }));
+  }, []);
 
   const allowedDurations = useMemo<number[]>(() => {
     const m = settings.videoModel ?? "";
@@ -268,32 +339,6 @@ export function ChatWorkspace() {
     if (m.includes("veo-3.0")) return [8];
     return [4, 6, 8]; // Gemini default
   }, [settings.videoModel]);
-
-  const onPickFiles = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
-      const remaining = MAX_REFERENCE_IMAGES - refImages.length;
-      if (remaining <= 0) {
-        toast.warning(t.toastMaxRefImages(MAX_REFERENCE_IMAGES));
-        return;
-      }
-      const toAdd = Array.from(files).slice(0, remaining);
-      const out: ReferenceImage[] = [];
-      for (const f of toAdd) {
-        try {
-          const c = await compressImage(f);
-          out.push({ id: crypto.randomUUID(), name: f.name, ...c });
-        } catch {
-          toast.danger(`${t.toastCompressFailed} ${f.name}`);
-        }
-      }
-      setRefImages((prev) => [...prev, ...out]);
-    },
-    [refImages.length, t]
-  );
-
-  const removeRefImage = (id: string) =>
-    setRefImages((prev) => prev.filter((r) => r.id !== id));
 
   const submit = async () => {
     const script = input.trim();
@@ -309,29 +354,17 @@ export function ChatWorkspace() {
     // Flush user message to IDB immediately so it survives a page refresh mid-generation.
     await saveActive({
       title: deriveSessionTitle([...messages, userMsg], t.newSessionTitle),
-      messages: [...messages, userMsg].map((m) => ({ id: m.id, role: m.role, content: m.content, storyboard: m.storyboard })),
-      refImages,
+      messages: [...messages, userMsg].map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        storyboard: m.storyboard,
+        sourceScript: m.sourceScript,
+        sourceBrief: m.sourceBrief,
+      })),
+      refImages: [],
     });
     await doFetchStoryboard(script, historyForApi);
-  };
-
-  const startGeneration = (sb: Storyboard) => {
-    if (!settings.videoModel) {
-      toast.warning(t.toastNoVideoModel);
-      return;
-    }
-    void startJobs(sb.shots, {
-      videoModel: settings.videoModel,
-      imageModel: settings.withReferenceFrames && models?.image?.length ? settings.imageModel : undefined,
-      aspectRatio: settings.aspectRatio,
-      durationSec: settings.durationSec,
-      withReferenceFrames: settings.withReferenceFrames,
-      chainFrames: settings.chainFrames,
-      concurrency: settings.chainFrames ? 1 : settings.concurrency,
-      detectedStyle: sb.detectedStyle,
-      sessionId: activeId ?? "",
-      referenceImages: refImages,
-    });
   };
 
   const setSelected = <K extends keyof UiSettings>(key: K) =>
@@ -342,9 +375,138 @@ export function ChatWorkspace() {
 
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-6 lg:grid-cols-[320px_1fr]">
-      {/* 左：参数面板 */}
-      <Card className="h-fit lg:sticky lg:top-20" variant="secondary">
-        <Card.Content className="flex flex-col gap-4">
+      {/* 左：创作需求 + 参数面板 */}
+      <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1">
+        <Card variant="secondary">
+          <Card.Content className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-base font-semibold">① 创作需求</h2>
+              <p className="mt-1 text-xs text-default-500">
+                没写脚本？填个主题，AI 先帮你写一版可直接拍的口播文案。
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-sm">主题（必填）</Label>
+              <TextArea
+                ref={themeRef}
+                value={brief.theme}
+                onChange={(e) => {
+                  const value = e.currentTarget.value;
+                  setBrief((b) => ({ ...b, theme: value }));
+                }}
+                placeholder="点击输入主题，例如：冬天火锅店双人餐 199 元"
+                aria-label="主题"
+                rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm">平台</Label>
+                <Select
+                  value={brief.platform}
+                  aria-label="平台"
+                  onChange={(k) => k && !Array.isArray(k) && updatePlatform(String(k))}
+                >
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {["抖音", "视频号", "小红书", "快手"].map((p) => (
+                        <ListBox.Item key={p} id={p} textValue={p}>
+                          {p}
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm">时长</Label>
+                <Select
+                  value={String(brief.durationSec)}
+                  aria-label="时长"
+                  onChange={(k) =>
+                    k && !Array.isArray(k) &&
+                    setBrief((b) => ({ ...b, durationSec: Number(k) }))
+                  }
+                >
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {[15, 30, 60].map((d) => (
+                        <ListBox.Item key={d} id={String(d)} textValue={`${d} 秒`}>
+                          {d} 秒
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-sm">目标受众</Label>
+              <Input
+                value={brief.audience}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setBrief((b) => ({ ...b, audience: value }));
+                }}
+                placeholder="例如：附近上班族、情侣"
+                aria-label="目标受众"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-sm">口播风格</Label>
+              <Select
+                value={brief.style}
+                aria-label="口播风格"
+                onChange={(k) =>
+                  k && !Array.isArray(k) && setBrief((b) => ({ ...b, style: String(k) }))
+                }
+              >
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    {["亲切种草", "专业讲解", "探店体验", "搞笑反转"].map((s) => (
+                      <ListBox.Item key={s} id={s} textValue={s}>
+                        {s}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    ))}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
+
+            <Button
+              variant="primary"
+              onPress={generateScript}
+              isDisabled={generatingScript}
+              className="gap-1.5"
+            >
+              {generatingScript ? <Spinner size="sm" color="current" /> : null}
+              生成口播脚本
+            </Button>
+          </Card.Content>
+        </Card>
+
+        <Card className="h-fit" variant="secondary">
+          <Card.Content className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">{t.paramsTitle}</h2>
             <Button size="sm" variant="ghost" isIconOnly onPress={refreshModels} isDisabled={loadingModels} aria-label={t.paramsRefreshModels}>
@@ -365,50 +527,6 @@ export function ChatWorkspace() {
             <Select.Popover>
               <ListBox>
                 {(models?.chat ?? []).map((m) => (
-                  <ListBox.Item key={m.name} id={m.name} textValue={m.displayName ?? m.name}>
-                    {m.displayName ?? m.name}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-
-          <Select
-            value={settings.videoModel ?? null}
-            onChange={setSelected("videoModel")}
-            placeholder={t.paramsVideoModelPlaceholder}
-          >
-            <Label>{t.paramsVideoModel}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {(models?.video ?? []).map((m) => (
-                  <ListBox.Item key={m.name} id={m.name} textValue={m.displayName ?? m.name}>
-                    {m.displayName ?? m.name}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-
-          <Select
-            value={settings.imageModel ?? null}
-            onChange={setSelected("imageModel")}
-            placeholder={t.paramsImageModelPlaceholder}
-          >
-            <Label>{t.paramsImageModel}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {(models?.image ?? []).map((m) => (
                   <ListBox.Item key={m.name} id={m.name} textValue={m.displayName ?? m.name}>
                     {m.displayName ?? m.name}
                     <ListBox.ItemIndicator />
@@ -509,47 +627,9 @@ export function ChatWorkspace() {
             </Switch.Control>
           </Switch>
 
-          <Switch
-            isSelected={settings.withReferenceFrames}
-            onChange={(v) => setSettings((s) => ({ ...s, withReferenceFrames: v }))}
-            isDisabled={!models?.image?.length}
-            className="flex w-full items-center justify-between"
-          >
-            <Switch.Content>
-              <Label className="text-sm font-normal">{t.paramsRefFrames}</Label>
-            </Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-          </Switch>
-
-          <Switch
-            isSelected={settings.chainFrames}
-            onChange={(v) => setSettings((s) => ({ ...s, chainFrames: v }))}
-            className="flex w-full items-center justify-between"
-          >
-            <Switch.Content>
-              <Label className="text-sm font-normal">{t.paramsChainFrames}</Label>
-            </Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-          </Switch>
-
-          <Switch
-            isSelected={settings.autoContinue}
-            onChange={(v) => setSettings((s) => ({ ...s, autoContinue: v }))}
-            className="flex w-full items-center justify-between"
-          >
-            <Switch.Content>
-              <Label className="text-sm font-normal">{t.paramsAutoContinue}</Label>
-            </Switch.Content>
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
-          </Switch>
         </Card.Content>
-      </Card>
+        </Card>
+      </div>
 
       {/* right: chat area */}
       <div className="flex h-[calc(100vh-7rem)] flex-col gap-3">
@@ -569,7 +649,6 @@ export function ChatWorkspace() {
               );
             })()}
           </div>
-          <JobsPanel activeSessionId={activeId} />
         </div>
         <Card className="flex-1 overflow-hidden">
           <Card.Content className="flex h-full flex-col gap-3 overflow-y-auto">
@@ -583,12 +662,19 @@ export function ChatWorkspace() {
                 i === messages.length - 1 &&
                 m.role === "user" &&
                 !submitting;
+              // Old sessions did not persist sourceScript; recover it from the
+              // nearest preceding user message so publish copy still works.
+              const fallbackScript = messages
+                .slice(0, i)
+                .reverse()
+                .find((x) => x.role === "user")?.content;
               return (
                 <MessageBubble
                   key={m.id}
                   msg={m}
-                  refCount={refImages.length}
-                  onStart={startGeneration}
+                  brief={brief}
+                  model={settings.chatModel}
+                  fallbackScript={fallbackScript}
                   isLastUnanswered={isLastUnanswered}
                   onRetry={() => {
                     void doFetchStoryboard(m.content, messages.slice(0, i));
@@ -604,52 +690,7 @@ export function ChatWorkspace() {
           </Card.Content>
         </Card>
 
-        {refImages.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {refImages.map((r, i) => (
-              <div key={r.id} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`data:${r.mimeType};base64,${r.bytesBase64Encoded}`}
-                  alt={r.name}
-                  className="h-16 w-16 rounded-md border border-default-200 object-cover"
-                />
-                <span className="absolute -left-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
-                  {i + 1}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeRefImage(r.id)}
-                  className="absolute -right-1 -top-1 rounded-full bg-default-900/80 px-1.5 text-[10px] text-white bg-danger/50 hover:bg-danger/80"
-                  aria-label="移除"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(e) => {
-              void onPickFiles(e.currentTarget.files);
-              e.currentTarget.value = "";
-            }}
-          />
-          <Button
-            variant="outline"
-            onPress={() => fileInputRef.current?.click()}
-            isDisabled={refImages.length >= MAX_REFERENCE_IMAGES}
-            className="gap-1.5"
-          >
-            <ImagePlus className="size-4" />{t.chatUpload} {refImages.length}/{MAX_REFERENCE_IMAGES}
-          </Button>
           <TextArea
             value={input}
             onChange={(e) => setInput(e.currentTarget.value)}
@@ -674,14 +715,16 @@ export function ChatWorkspace() {
 
 function MessageBubble({
   msg,
-  refCount,
-  onStart,
+  brief,
+  model,
+  fallbackScript,
   isLastUnanswered,
   onRetry,
 }: {
   msg: UiMessage;
-  refCount: number;
-  onStart: (sb: Storyboard) => void;
+  brief: Brief;
+  model?: string;
+  fallbackScript?: string;
   isLastUnanswered?: boolean;
   onRetry?: () => void;
 }) {
@@ -726,7 +769,13 @@ function MessageBubble({
         <Card.Content className="text-sm">{msg.content}</Card.Content>
       </Card>
       {msg.storyboard && (
-        <StoryboardView sb={msg.storyboard} refCount={refCount} onStart={onStart} />
+        <StoryboardView
+          sb={msg.storyboard}
+          sourceScript={msg.sourceScript ?? fallbackScript ?? ""}
+          brief={msg.sourceBrief ?? brief}
+          targetKnown={!!msg.sourceBrief}
+          model={model}
+        />
       )}
     </div>
   );
@@ -734,14 +783,94 @@ function MessageBubble({
 
 function StoryboardView({
   sb,
-  refCount,
-  onStart,
+  sourceScript,
+  brief,
+  targetKnown,
+  model,
 }: {
   sb: Storyboard;
-  refCount: number;
-  onStart: (sb: Storyboard) => void;
+  sourceScript: string;
+  brief: Brief;
+  targetKnown: boolean;
+  model?: string;
 }) {
   const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publish, setPublish] = useState<PublishCopy | null>(null);
+  const [publishCopied, setPublishCopied] = useState(false);
+
+  const copyStoryboard = () => {
+    const text = sb.shots
+      .map((s) =>
+        [
+          `#${s.index} ${s.durationSec}s`,
+          s.summary,
+          `镜头：${s.camera}`,
+          `构图：${s.composition}`,
+          `氛围：${s.ambiance}`,
+          s.dialogue.length > 0
+            ? `台词：${s.dialogue.map((d) => `${d.speaker}：${d.line}`).join(" ")}`
+            : "",
+          s.subtitle ? `字幕：${s.subtitle}` : "",
+          s.keywords?.length ? `重点词：${s.keywords.join(" / ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      )
+      .join("\n\n");
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const generatePublish = async () => {
+    if (!sourceScript || !model || publishing) return;
+    setPublishing(true);
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          theme: brief.theme,
+          platform: brief.platform,
+          audience: brief.audience,
+          script: sourceScript,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        toast.danger("发布文案生成失败", { description: d.error });
+        return;
+      }
+      setPublish(d.publish as PublishCopy);
+    } catch (e) {
+      toast.danger("网络错误", { description: String(e) });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const copyPublish = () => {
+    if (!publish) return;
+    const text = [
+      "标题：",
+      ...publish.titles.map((x, i) => `${i + 1}. ${x}`),
+      "",
+      "封面短句：",
+      ...publish.coverTexts.map((x, i) => `${i + 1}. ${x}`),
+      "",
+      "发布描述：",
+      publish.description,
+    ].join("\n");
+    void navigator.clipboard.writeText(text).then(() => {
+      setPublishCopied(true);
+      setTimeout(() => setPublishCopied(false), 1500);
+    });
+  };
+
   return (
     <Card variant="secondary" className="space-y-3">
       <div className="flex flex-wrap gap-2 text-xs">
@@ -749,8 +878,18 @@ function StoryboardView({
           {t.sbStyle}{sb.detectedStyle}
         </Chip>
         <Chip variant="soft">{t.sbLanguage}{sb.language}</Chip>
-        <Chip variant="soft">{t.sbTotalDuration}{sb.totalDurationSec}s</Chip>
+        <Chip variant="soft">
+          {t.sbTotalDuration}
+          {sb.totalDurationSec}s
+          {targetKnown ? ` / 目标 ${brief.durationSec}s` : ""}
+        </Chip>
         <Chip variant="soft">{t.sbShots}{sb.shots.length}</Chip>
+        {targetKnown && Math.abs(sb.totalDurationSec - brief.durationSec) > 3 && (
+          <div className="w-full text-xs text-warning">
+            分镜总时长与目标偏差 {sb.totalDurationSec - brief.durationSec > 0 ? "+" : ""}
+            {sb.totalDurationSec - brief.durationSec}s，可修改脚本或重新生成。
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {sb.shots.map((s) => (
@@ -760,11 +899,6 @@ function StoryboardView({
                 <div className="flex items-center gap-2">
                   <span className="text-base font-semibold">#{s.index}</span>
                   <Chip size="sm" variant="soft">{s.durationSec}s</Chip>
-                  {s.referenceImageIndex && s.referenceImageIndex > 0 && refCount > 0 && (
-                    <Chip size="sm" color="accent" variant="soft">
-                      {t.sbRefImage}{s.referenceImageIndex}
-                    </Chip>
-                  )}
                 </div>
               </div>
               <div className="text-default-700">{s.summary}</div>
@@ -790,6 +924,12 @@ function StoryboardView({
                   <span className="text-default-500">{t.sbSubtitle}</span>{s.subtitle}
                 </div>
               )}
+              {s.keywords && s.keywords.length > 0 && (
+                <div className="text-xs">
+                  <span className="text-default-500">{t.sbKeywords}</span>
+                  {s.keywords.join(" / ")}
+                </div>
+              )}
               {s.continuityHint && (
                 <div className="text-xs text-default-500">{t.sbContinuity}{s.continuityHint}</div>
               )}
@@ -803,11 +943,52 @@ function StoryboardView({
           </Card>
         ))}
       </div>
-      <div className="flex gap-2">
-        <Button variant="primary" size="sm" onPress={() => onStart(sb)} className="gap-1.5">
-          <Clapperboard className="size-4" />{t.sbGenerate}
+
+      <div className="flex flex-wrap gap-2 border-t border-default-200 pt-3">
+        <Button size="sm" variant="outline" onPress={copyStoryboard} className="gap-1.5">
+          <Copy className="size-4" />
+          {copied ? "已复制分镜" : "复制全部分镜"}
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          onPress={generatePublish}
+          isDisabled={publishing || !sourceScript || !model}
+          className="gap-1.5"
+        >
+          {publishing ? <Spinner size="sm" color="current" /> : null}
+          {publish ? "重新生成发布文案" : "生成发布文案"}
         </Button>
       </div>
+
+      {publish && (
+        <div className="space-y-2 rounded-md bg-default-100 p-3 text-xs">
+          <div>
+            <div className="font-medium text-default-500">标题候选</div>
+            {publish.titles.map((x, i) => (
+              <div key={`title-${i}`}>
+                {i + 1}. {x}
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="font-medium text-default-500">封面短句</div>
+            {publish.coverTexts.map((x, i) => (
+              <div key={`cover-${i}`}>
+                {i + 1}. {x}
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="font-medium text-default-500">发布描述</div>
+            <div className="whitespace-pre-wrap">{publish.description}</div>
+          </div>
+          <Button size="sm" variant="ghost" onPress={copyPublish} className="gap-1.5">
+            <Copy className="size-4" />
+            {publishCopied ? "已复制" : "复制发布文案"}
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

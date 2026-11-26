@@ -3,13 +3,15 @@
 import { create } from "zustand";
 import { idbDelete, idbGetAll, idbPut, STORE_SESSIONS } from "@/lib/db/idb";
 import { useJobsStore } from "@/lib/stores/jobs";
-import type { ReferenceImage, Storyboard } from "@/lib/types";
+import type { CreativeBrief, ReferenceImage, Storyboard } from "@/lib/types";
 
 export interface SessionMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   storyboard?: Storyboard;
+  sourceScript?: string;
+  sourceBrief?: CreativeBrief;
 }
 
 export interface ChatSessionRecord {

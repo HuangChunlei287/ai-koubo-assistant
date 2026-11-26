@@ -4,8 +4,8 @@ import { Providers } from "@/components/Providers";
 import { Navbar } from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Script2Video",
-  description: "Turn scripts into videos with Gemini + Veo",
+  title: "AI 口播创作助手",
+  description: "从主题到口播脚本、拍摄分镜和字幕重点词的一站式创作工具",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="h-full">
+    <html lang="zh-CN" suppressHydrationWarning className="h-full">
       <body className="min-h-full antialiased">
         <Providers>
           <Navbar />

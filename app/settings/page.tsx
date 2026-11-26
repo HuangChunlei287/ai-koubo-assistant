@@ -49,6 +49,14 @@ const PROVIDER_META: ProviderMeta[] = [
     placeholder: "sk-ant-...",
   },
   {
+    id: "deepseek",
+    label: "DeepSeek",
+    description: "Chat: deepseek-chat · 国内直连 · 按量计费",
+    link: "https://platform.deepseek.com/api_keys",
+    linkLabel: "platform.deepseek.com/api_keys",
+    placeholder: "sk-...",
+  },
+  {
     id: "runway",
     label: "Runway",
     description: "Video: Gen-4.5 (5s/10s), Gen-4 Turbo (5s/10s)",
