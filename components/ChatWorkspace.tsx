@@ -19,7 +19,21 @@ import { useSessionsStore } from "@/lib/stores/sessions";
 import { SessionsPanel } from "@/components/SessionsPanel";
 import type { CreativeBrief, GeminiModel, PublishCopy, Storyboard } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
-import { Check, Copy, RefreshCw, RotateCcw, Send } from "lucide-react";
+import { buildFullSrt } from "@/lib/utils/vtt";
+import {
+  buildShotListCsv,
+  downloadTextFile,
+  safeFileName,
+} from "@/lib/utils/exportPlan";
+import {
+  Check,
+  Copy,
+  Download,
+  FileSpreadsheet,
+  RefreshCw,
+  RotateCcw,
+  Send,
+} from "lucide-react";
 
 type Models = { chat: GeminiModel[]; video: GeminiModel[]; image: GeminiModel[] };
 
@@ -825,6 +839,32 @@ function StoryboardView({
     });
   };
 
+  const fileBase = safeFileName(brief.theme || "口播分镜");
+
+  const exportSrt = () => {
+    if (!sb.shots.some((s) => s.subtitle?.trim())) {
+      toast.warning("当前分镜没有字幕", {
+        description: "请先开启字幕并重新生成分镜。",
+      });
+      return;
+    }
+    downloadTextFile(
+      `${fileBase}_字幕.srt`,
+      buildFullSrt(sb.shots),
+      "application/x-subrip;charset=utf-8"
+    );
+    toast.success("已导出 SRT 字幕");
+  };
+
+  const exportShotList = () => {
+    downloadTextFile(
+      `${fileBase}_拍摄清单.csv`,
+      buildShotListCsv(sb),
+      "text/csv;charset=utf-8"
+    );
+    toast.success("已导出拍摄清单");
+  };
+
   const generatePublish = async () => {
     if (!sourceScript || !model || publishing) return;
     setPublishing(true);
@@ -948,6 +988,19 @@ function StoryboardView({
         <Button size="sm" variant="outline" onPress={copyStoryboard} className="gap-1.5">
           <Copy className="size-4" />
           {copied ? "已复制分镜" : "复制全部分镜"}
+        </Button>
+        <Button size="sm" variant="outline" onPress={exportSrt} className="gap-1.5">
+          <Download className="size-4" />
+          导出 SRT 字幕
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onPress={exportShotList}
+          className="gap-1.5"
+        >
+          <FileSpreadsheet className="size-4" />
+          导出拍摄清单
         </Button>
         <Button
           size="sm"
